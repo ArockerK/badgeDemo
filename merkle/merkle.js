@@ -4,11 +4,14 @@ const { parse } = require('csv-parse')
 const fs = require('fs')
 const path = require('path')
 const ethers = require('ethers')
+const createCsvWriter = require('csv-writer').createArrayCsvWriter;
+
+
 
 
 async function parseCSV() {
     return new Promise((resolve, reject) => {
-      const sourcePath = path.resolve('./merkle/whitelistv2.csv')
+      const sourcePath = path.resolve('./merkle/whitelistv.csv')
       if (!sourcePath) reject("whitelist csv file not found.")
       const walletAddresses = []
       const times = []
@@ -29,7 +32,7 @@ async function parseCSV() {
           times.push(timestamp);
           //cal hash
           //console.log("walletAddress is ", walletAddress, "onboardingTime is ", onboardingTime.toString(), "timeStamp is ", timestamp)
-          leaf = ethers.utils.solidityPack(["address", "uint256"], [walletAddress, timestamp])
+          const leaf = ethers.utils.solidityPack(["address", "uint256"], [walletAddress, timestamp])
 
           leafHashes.push(leaf)
         })
@@ -59,16 +62,57 @@ function verify(tree, leaf, proof) {
   return tree.verify(proof, leafHash, root);
 }
 
+async function writeFile(addresses, times, proofs) {
+  let columns = [
+    'address',
+    'onboardingTime',
+    'proof'
+  ];
+
+  let details = new Array();
+  const len = addresses.length;
+
+  for (i = 0; i < len; i++) {
+    details.push([addresses[i], times[i], proofs[i]]);
+  }
+
+  const filename = "proofs.csv";
+  const csvWriter = createCsvWriter({
+      header: columns,
+      path: filename
+  });
+
+  csvWriter.writeRecords(details)
+      .then(() => {
+          console.log('...Done');
+      })
+      .catch((e) => {
+        console.log(e);
+      })
+}
+
+
+
+
 async function main() {
+    let proofs = new Array();
     const [addresses, times, leafhashes] = await parseCSV()
     const tree = generateMerkleTree(leafhashes)
 
     const root = tree.getHexRoot()
 
+    /*
     const proof = getProof(tree, leafhashes[0])
 
     console.log(verify(tree, leafhashes[0], proof)) // true
     console.log(verify(tree, leafhashes[1], proof))  // false
+    */
+    for (i = 0; i < addresses.length; i++) {
+      proofs.push(getProof(tree, leafhashes[i]));
+    }
+
+    //写文件
+    await writeFile(addresses, times, proofs);
 }
 
 module.exports = {
